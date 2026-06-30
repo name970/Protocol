@@ -23,7 +23,7 @@ The decomposition technique is **not novel**: it builds on the Ozaki scheme and 
 work putting it on integer / INT8 tensor cores. The contribution here is using it as the
 compute layer of a verifiable-work consensus, with the audit and soundness analysis that requires.
 
-## What works today
+## What is open
 
 <!-- Edit this list to match exactly what the code currently does — keep it honest. -->
 
