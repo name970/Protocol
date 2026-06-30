@@ -87,4 +87,4 @@ The broader protocol design includes a token. **It is not the point of this repo
 This repo is about the technology; issues and discussion here are technical.
 
 ## License
-GNU GENERAL PUBLIC LICENSE Version 3.0
+MIT LICENSE
