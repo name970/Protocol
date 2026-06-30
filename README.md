@@ -25,14 +25,9 @@ compute layer of a verifiable-work consensus, with the audit and soundness analy
 
 ## What is open
 
-<!-- Edit this list to match exactly what the code currently does — keep it honest. -->
-
-- Exact `INT8 → INT32` partial products with `FP64` reconstruction.
-- The audit (Freivalds over the Mersenne prime `p = 2^61 − 1`), rejecting naive forgeries.
-- Non-interactive commit–reveal challenge derivation.
-
-## What is open
-
+- Exact `INT8 → INT32` partial products with `FP64` reconstruction — designed, not yet implemented.
+- The audit (Freivalds over the Mersenne prime `p = 2^61 − 1`) — designed, not yet implemented.
+- Non-interactive commit–reveal challenge derivation — designed, not yet implemented.
 - Post-quantum time-seal (delay function) — open design question.
 - Data-availability layer (FRI) and private transaction layer — specified, not implemented.
 - GPU kernels — current code is a CPU reference.
