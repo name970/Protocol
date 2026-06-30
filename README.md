@@ -38,7 +38,7 @@ compute layer of a verifiable-work consensus, with the audit and soundness analy
 
 ```bash
 git clone https://github.com/name970/Protocol
-cd protocol
+cd Protocol
 
 cargo test                    # exactness + forgery-rejection tests
 cargo run --example demo      # bit-exact INT8 matmul vs an f64 reference (adjust to your layout)
