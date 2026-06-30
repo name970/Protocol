@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions & design discussion
+    url: https://github.com/name970/Protocol/discussions
+    about: Ask anything about the math or design here, not in issues.
