@@ -1,29 +1,22 @@
-//! Demonstrates bit-exact matrix multiplication through the INT8 slice path.
-//! Run with: cargo run --example demo
+//! Demonstrates bit-exact multiplication of real f32 matrices through the INT8 slice path.
+//! Run with:  cargo run --example demo
 
-use protocol::{decompose_matrix, matmul_reference, matmul_via_slices, no_overflow_bits, IntMatrix};
+use protocol::{matmul_f32, matmul_f32_naive, F32Matrix};
 
 fn main() {
+    let frac = 16; // fixed-point fractional bits
     let b = 7; // INT8 slice width
 
-    // Two small integer matrices (think: fixed-point / scaled floating-point values).
-    let a = IntMatrix { rows: 2, cols: 2, data: vec![123_456, -98_765, 42, -7] };
-    let bb = IntMatrix { rows: 2, cols: 2, data: vec![-31_415, 27_182, 99_999, -12_345] };
+    // Real f32 matrices (these values land exactly on the 2^-frac grid).
+    let a = F32Matrix { rows: 2, cols: 2, data: vec![1.5, -2.25, 0.125, 3.75] };
+    let bb = F32Matrix { rows: 2, cols: 2, data: vec![-0.5, 8.0, 100.25, -1.125] };
 
-    // Decompose A into INT8 slices and confirm the bound.
-    let slices = decompose_matrix(&a, b);
-    println!("A splits into {} INT8 slices (every entry |x| < 2^{}).", slices.len(), b);
+    let via = matmul_f32(&a, &bb, frac, b);
+    let naive = matmul_f32_naive(&a, &bb);
 
-    // Multiply via the slice path and via a direct reference — they must match exactly.
-    let via = matmul_via_slices(&a, &bb, b);
-    let reference = matmul_reference(&a, &bb);
-
-    println!("via INT8 slices : {:?}", via.data);
-    println!("direct reference: {:?}", reference.data);
-    assert_eq!(via, reference, "the slice product must be bit-exact");
-
-    println!(
-        "bit-exact match — no rounding error. (INT32 accumulator uses {} of 31 bits here.)",
-        no_overflow_bits(b, a.cols as u32)
-    );
+    println!("f32 matrices multiplied through the exact INT8 path:");
+    println!("via INT8 slices : {via:?}");
+    println!("direct f64      : {naive:?}");
+    assert_eq!(via, naive, "the slice product must match a direct f64 product bit-for-bit");
+    println!("bit-exact match — an exact FP result reconstructed from INT8, no rounding error.");
 }
