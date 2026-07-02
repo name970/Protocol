@@ -134,8 +134,8 @@ pub fn matmul_via_slices(a: &IntMatrix, b: &IntMatrix, b_bits: u32) -> IntMatrix
         for (j, sb) in b_slices.iter().enumerate() {
             let partial = matmul_slice(sa, sb); // exact
             let scale: i128 = beta.pow((i + j) as u32); // (2^b)^(i+j)
-            for idx in 0..n * m {
-                acc[idx] += scale * partial.data[idx] as i128;
+            for (idx, slot) in acc.iter_mut().enumerate() {
+                *slot += scale * partial.data[idx] as i128;
             }
         }
     }
