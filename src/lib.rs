@@ -1,4 +1,5 @@
-//! Exact matrix multiplication via INT8 slice decomposition — the Ozaki-scheme core.
+//! Exact matrix multiplication via INT8 slice decomposition — the Ozaki-scheme core,
+//! plus a fixed-point `f32` front-end.
 //!
 //! The idea (whitepaper §2.2): an integer matrix is split into a short sum of
 //! **bounded integer slices**, each entry fitting a signed `i8`:
@@ -11,11 +12,16 @@
 //! then the full product is reassembled by scaling and summing the integer partial
 //! products. The result is bit-for-bit exact.
 //!
-//! This module is the clean integer core. A production build layers on top of it:
-//! per-tile dynamic-range scaling to feed real `f32`/`f64` values through the same
-//! path, ULP-based pruning of negligible slice pairs, and actual INT8 tensor-core
-//! kernels for `matmul_slice`. The exactness argument, and the no-overflow invariant,
-//! live here.
+//! The `f32` layer ([`matmul_f32`]) maps floating-point matrices onto a fixed-point
+//! grid (multiples of `2^-frac_bits`), runs them through the exact integer core, and
+//! reconstructs the product in `f64`. Values already on the grid are converted
+//! exactly, so for on-grid inputs the reconstructed product is bit-for-bit exact.
+//!
+//! A production build layers on top of this: per-tile dynamic-range scaling, ULP-based
+//! pruning of negligible slice pairs, and actual INT8 tensor-core kernels for
+//! `matmul_slice`. The exactness argument and the no-overflow invariant live here.
+
+// ------------------------------------------------------------------ integer core
 
 /// A dense, row-major integer matrix.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -104,7 +110,7 @@ pub fn matmul_reference(a: &IntMatrix, b: &IntMatrix) -> IntMatrix {
 /// Exact partial product of two slices: `i8` inputs, `i32` accumulator, no rounding.
 ///
 /// The `i32` accumulator never overflows as long as the no-overflow invariant holds:
-/// `2*b + ceil(log2(n)) <= 31` for inner dimension `n` (see `no_overflow_bits`).
+/// `2*b + ceil(log2(n)) <= 31` for inner dimension `n` (see [`no_overflow_bits`]).
 fn matmul_slice(a: &I8Matrix, b: &I8Matrix) -> IntMatrix {
     assert_eq!(a.cols, b.rows, "shape mismatch");
     let (n, k, m) = (a.rows, a.cols, b.cols);
@@ -121,7 +127,7 @@ fn matmul_slice(a: &I8Matrix, b: &I8Matrix) -> IntMatrix {
     IntMatrix { rows: n, cols: m, data }
 }
 
-/// Exact matmul via the Ozaki slice path. Bit-for-bit equal to `matmul_reference`.
+/// Exact matmul via the Ozaki slice path. Bit-for-bit equal to [`matmul_reference`].
 pub fn matmul_via_slices(a: &IntMatrix, b: &IntMatrix, b_bits: u32) -> IntMatrix {
     assert_eq!(a.cols, b.rows, "shape mismatch");
     let a_slices = decompose_matrix(a, b_bits);
@@ -154,6 +160,70 @@ pub fn matmul_via_slices(a: &IntMatrix, b: &IntMatrix, b_bits: u32) -> IntMatrix
 pub fn no_overflow_bits(b: u32, n: u32) -> u32 {
     let ceil_log2_n = if n <= 1 { 0 } else { 32 - (n - 1).leading_zeros() };
     2 * b + ceil_log2_n
+}
+
+// ---------------------------------------------------------------- f32 front-end
+
+/// A dense, row-major `f32` matrix.
+#[derive(Clone, Debug, PartialEq)]
+pub struct F32Matrix {
+    pub rows: usize,
+    pub cols: usize,
+    pub data: Vec<f32>,
+}
+
+/// Map an `f32` onto the fixed-point grid of step `2^-frac_bits` (round to nearest).
+/// Exact when `x` is already a multiple of `2^-frac_bits`.
+pub fn f32_to_fixed(x: f32, frac_bits: u32) -> i64 {
+    (x as f64 * (1i64 << frac_bits) as f64).round() as i64
+}
+
+/// Reconstruct an `f64` from a fixed-point integer with `frac_bits` fractional bits.
+pub fn fixed_to_f64(v: i64, frac_bits: u32) -> f64 {
+    v as f64 / (1i64 << frac_bits) as f64
+}
+
+/// Grid an `f32` matrix onto fixed-point integers.
+pub fn f32_matrix_to_fixed(m: &F32Matrix, frac_bits: u32) -> IntMatrix {
+    IntMatrix {
+        rows: m.rows,
+        cols: m.cols,
+        data: m.data.iter().map(|&x| f32_to_fixed(x, frac_bits)).collect(),
+    }
+}
+
+/// Exact product of two `f32` matrices via the INT8 slice path, reconstructed in `f64`.
+///
+/// Both inputs are gridded to `frac_bits`, multiplied exactly as integers, and the
+/// product (scaled by `2^(2·frac_bits)`) is reconstructed. For on-grid inputs whose
+/// exact product fits in `f64`, the result is bit-for-bit exact. Returns a row-major
+/// `rows × cols` vector.
+pub fn matmul_f32(a: &F32Matrix, b: &F32Matrix, frac_bits: u32, b_bits: u32) -> Vec<f64> {
+    let ai = f32_matrix_to_fixed(a, frac_bits);
+    let bi = f32_matrix_to_fixed(b, frac_bits);
+    let product = matmul_via_slices(&ai, &bi, b_bits); // = 2^(2F) · (gridded product)
+    product
+        .data
+        .iter()
+        .map(|&v| fixed_to_f64(v, 2 * frac_bits))
+        .collect()
+}
+
+/// Plain `f64` matrix product — the baseline you'd get without the slice trick.
+pub fn matmul_f32_naive(a: &F32Matrix, b: &F32Matrix) -> Vec<f64> {
+    assert_eq!(a.cols, b.rows, "shape mismatch");
+    let (n, k, m) = (a.rows, a.cols, b.cols);
+    let mut out = vec![0.0f64; n * m];
+    for i in 0..n {
+        for j in 0..m {
+            let mut acc = 0.0f64;
+            for t in 0..k {
+                acc += a.data[i * k + t] as f64 * b.data[t * m + j] as f64;
+            }
+            out[i * m + j] = acc;
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -226,5 +296,27 @@ mod tests {
         assert!(no_overflow_bits(7, 512) <= 31);
         // Headroom: b = 7 stays safe up to n = 2^17.
         assert!(no_overflow_bits(7, 1 << 17) <= 31);
+    }
+
+    #[test]
+    fn f32_pipeline_is_bit_exact() {
+        let frac = 16u32;
+        let b = 7u32;
+        let mut rng = Rng(0xf00d_face_1234_5678);
+        for _ in 0..500 {
+            let n = rng.in_range(1, 5) as usize;
+            let k = rng.in_range(1, 5) as usize;
+            let m = rng.in_range(1, 5) as usize;
+            // On-grid f32 values (integer / 2^frac), bounded so the exact product fits in f64.
+            let scale = (1i64 << frac) as f64;
+            let sample = |rng: &mut Rng| (rng.in_range(-(1 << 18), 1 << 18) as f64 / scale) as f32;
+            let a = F32Matrix { rows: n, cols: k, data: (0..n * k).map(|_| sample(&mut rng)).collect() };
+            let bb = F32Matrix { rows: k, cols: m, data: (0..k * m).map(|_| sample(&mut rng)).collect() };
+
+            let via = matmul_f32(&a, &bb, frac, b);
+            let naive = matmul_f32_naive(&a, &bb);
+            // For on-grid, bounded inputs both are exact, so they must agree bit-for-bit.
+            assert_eq!(via, naive, "f32 pipeline must match a direct f64 product");
+        }
     }
 }
