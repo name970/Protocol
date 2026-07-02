@@ -25,7 +25,7 @@ compute layer of a verifiable-work consensus, with the audit and soundness analy
 
 ## What is open
 
-- - Exact `INT8 → INT32` partial products with `FP64` reconstruction — implemented and covered by tests (bit-exact against a direct reference).
+- Exact `INT8 → INT32` partial products with `FP64` reconstruction — implemented and covered by tests (bit-exact against a direct reference).
 - The audit (Freivalds over the Mersenne prime `p = 2^61 − 1`) — designed, not yet implemented.
 - Non-interactive commit–reveal challenge derivation — designed, not yet implemented.
 - Post-quantum time-seal (delay function) — open design question.
