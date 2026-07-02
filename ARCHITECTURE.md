@@ -4,7 +4,7 @@ This maps whitepaper sections to code, so you can see where a task sits before p
 
 | Whitepaper | What it does | Code | Status |
 |---|---|---|---|
-| §2.2 Error-free decomposition | FP→INT8 slicing, exact INT8→INT32 partial products, FP64 reassembly | `src/<...>` | working (CPU) |
+| §2.2 Error-free decomposition | FP→INT8 slicing, exact INT8→INT32 partial products, FP64 reassembly | `src/lib.rs` | working (CPU) |
 | §2.2/§2.4 SMA audit |Stochastic Matrix Audit over F_p, integer-exactness/range check, commit–reveal challenge derivation | `src/<...>` | working |
 | §2.3 Aggregation | scaled FP64 summation of verified partial products | `src/<...>` | working |
 | §2.4 Time-seal (VDF) | delay function + verification | `src/<...>` | open / prototype |
