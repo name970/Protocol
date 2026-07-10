@@ -1,8 +1,8 @@
 # Protocol
 
-> A Proof-of-Useful-Work consensus where the "work" is **verifiable matrix multiplication**:
+> A Proof-of-Useful-Work consensus where the "work" is verifiable matrix multiplication:
 > exact INT8 arithmetic for bit-reproducible results, plus a cheap probabilistic audit that
-> certifies a product *without recomputing it*.
+> certifies a product without recomputing it.
 
 > [!WARNING]
 > **Status: research / proof-of-concept. Unaudited. Not for production use.**
@@ -26,7 +26,6 @@ compute layer of a verifiable-work consensus, with the audit and soundness analy
 ## What is open
 
 - Exact `INT8 → INT32` partial products with `FP64` reconstruction — implemented and covered by tests (bit-exact against a direct reference).
-- The audit (Freivalds over the Mersenne prime `p = 2^61 − 1`) — designed, not yet implemented.
 - Non-interactive commit–reveal challenge derivation — designed, not yet implemented.
 - Post-quantum time-seal (delay function) — open design question.
 - Data-availability layer (FRI) and private transaction layer — specified, not implemented.
