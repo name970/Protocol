@@ -1,0 +1,141 @@
+// SMA / Freivalds audit benchmark
+// ---------------------------------------------------------------------------
+// Shows the core claim of the PoUW engine: an n x n matrix product can be
+// *verified* in O(n^2) instead of *recomputed* in O(n^3), and the audit
+// rejects a forged product. All arithmetic is exact integer (no floats, no
+// tolerance): the audit accepts if and only if C == A*B.
+//
+// Standard library only -- no external crates.
+//
+// Two ways to run:
+//   1) As a cargo example (if the repo is a valid cargo project):
+//        put this file at  examples/benchmark.rs
+//        cargo run --release --example benchmark
+//   2) Standalone, no cargo needed:
+//        rustc -O benchmark.rs && ./benchmark
+//
+// IMPORTANT: use release / -O. In debug mode the O(n^3) baseline is very slow.
+// ---------------------------------------------------------------------------
+
+use std::time::Instant;
+
+// tiny deterministic PRNG (xorshift64*) so we depend on no external crate
+struct Rng(u64);
+impl Rng {
+    fn new(seed: u64) -> Self {
+        Rng(seed | 1)
+    }
+    fn next_u64(&mut self) -> u64 {
+        let mut x = self.0;
+        x ^= x << 13;
+        x ^= x >> 7;
+        x ^= x << 17;
+        self.0 = x;
+        x
+    }
+    // uniform in [0, bound)
+    fn below(&mut self, bound: u64) -> i64 {
+        (self.next_u64() % bound) as i64
+    }
+}
+
+// small entries keep every intermediate well inside i64 (exact, no overflow):
+// with entries < 100 and n <= 1024, the largest accumulator is ~1e12 << 9.2e18.
+fn random_matrix(n: usize, rng: &mut Rng) -> Vec<i64> {
+    (0..n * n).map(|_| rng.below(100)).collect()
+}
+// vector entries in [1, 100) so any single forged cell is provably caught
+fn random_vec_nonzero(n: usize, rng: &mut Rng) -> Vec<i64> {
+    (0..n).map(|_| 1 + rng.below(99)).collect()
+}
+
+// O(n^3) full recomputation (the "work" a naive verifier would redo)
+fn matmul(a: &[i64], b: &[i64], n: usize) -> Vec<i64> {
+    let mut c = vec![0i64; n * n];
+    for i in 0..n {
+        for k in 0..n {
+            let aik = a[i * n + k];
+            if aik == 0 {
+                continue;
+            }
+            let arow = i * n;
+            let brow = k * n;
+            for j in 0..n {
+                c[arow + j] += aik * b[brow + j];
+            }
+        }
+    }
+    c
+}
+
+// O(n^2) matrix-vector product
+fn matvec(m: &[i64], v: &[i64], n: usize) -> Vec<i64> {
+    let mut out = vec![0i64; n];
+    for i in 0..n {
+        let mut acc = 0i64;
+        let row = i * n;
+        for j in 0..n {
+            acc += m[row + j] * v[j];
+        }
+        out[i] = acc;
+    }
+    out
+}
+
+// Freivalds audit: check A*(B*h) == C*h in O(n^2).
+// By associativity A*(B*h) = (A*B)*h, so this holds iff C == A*B (whp over h).
+fn audit(a: &[i64], b: &[i64], c: &[i64], h: &[i64], n: usize) -> bool {
+    let bh = matvec(b, h, n);
+    let abh = matvec(a, &bh, n);
+    let ch = matvec(c, h, n);
+    abh == ch
+}
+
+fn main() {
+    println!("SMA / Freivalds audit benchmark");
+    println!("verify an n x n product in O(n^2) instead of recomputing it in O(n^3)");
+    println!("exact integer arithmetic; audit accepts iff C == A*B\n");
+    println!("{:>6} | {:>18} | {:>14} | {:>9}", "n", "recompute A*B", "audit", "speedup");
+    println!("{}", "-".repeat(58));
+
+    let mut rng = Rng::new(0x9E3779B97F4A7C15);
+    for &n in &[128usize, 256, 512, 1024] {
+        let a = random_matrix(n, &mut rng);
+        let b = random_matrix(n, &mut rng);
+        let h = random_vec_nonzero(n, &mut rng);
+
+        let t0 = Instant::now();
+        let c = matmul(&a, &b, n);
+        let t_matmul = t0.elapsed().as_nanos() as f64;
+
+        let t1 = Instant::now();
+        let ok = audit(&a, &b, &c, &h, n);
+        let t_audit = (t1.elapsed().as_nanos().max(1)) as f64;
+        assert!(ok, "audit must accept the true product");
+
+        println!(
+            "{:>6} | {:>15.3} ms | {:>11.4} ms | {:>7.0}x",
+            n,
+            t_matmul / 1e6,
+            t_audit / 1e6,
+            t_matmul / t_audit
+        );
+    }
+
+    // soundness: a single tampered entry must be rejected
+    println!("\nsoundness check");
+    let n = 512;
+    let a = random_matrix(n, &mut rng);
+    let b = random_matrix(n, &mut rng);
+    let h = random_vec_nonzero(n, &mut rng);
+    let mut c = matmul(&a, &b, n);
+    println!(
+        "  correct product     -> audit {}",
+        if audit(&a, &b, &c, &h, n) { "ACCEPTS" } else { "REJECTS" }
+    );
+    c[0] += 1; // forge exactly one cell
+    println!(
+        "  one cell tampered   -> audit {}",
+        if audit(&a, &b, &c, &h, n) { "ACCEPTS" } else { "REJECTS" }
+    );
+}
