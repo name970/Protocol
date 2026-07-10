@@ -55,15 +55,15 @@ Contributors are very welcome — especially people who want to write the code.
 - New here? Start with the **`good first issue`** label: self-contained tasks that touch the
   numerics and need no protocol-wide knowledge.
 - Read [CONTRIBUTING.md](CONTRIBUTING.md) for dev setup and PR conventions.
-- Questions and design discussion go in [Discussions](#community), not issues.
+- Questions and design discussion go in [Discussions]( #community), not issues.
 
 Every issue references the relevant whitepaper section via `ARCHITECTURE.md`, so you can see
 where a task sits in the whole before picking it up.
 
 ## Community
 
-- **Discussions:** '<https://github.com/name970/Protocol/discussions>'
-- **Discord:** `<https://discord.gg/aVwCK8WEYd>`
+- **Discussions:** <https://github.com/name970/Protocol/discussions>
+- **Discord:** https://discord.gg/aVwCK8WEYd
 
 ## Cryptography, honestly
 
@@ -71,7 +71,7 @@ This is research, and the soundness arguments are being worked through in the op
 asserted. Public discussion so far:
 
 - Hash-based nullifier without an elliptic-curve key tree'<https://crypto.stackexchange.com/posts/119735/revisions>'
-- Commit-reveal hash binding sufficient to prevent adaptive forgeries in a Stochastic Matrix Audit'<https://crypto.stackexchange.com/posts/119728/revisions>'
+- Commit-reveal hash binding sufficient to prevent adaptive forgeries in a Stochastic Matrix Audit<https://crypto.stackexchange.com/posts/119728/revisions>
  
 
 If you can break something, open an issue — adversarial review is the most useful contribution.
