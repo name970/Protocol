@@ -45,7 +45,10 @@ pub struct I8Matrix {
 /// Every digit satisfies `|d_i| < 2^b`, so for `b <= 7` they fit in a signed `i8`.
 /// Handles negative values directly (no separate sign bookkeeping needed).
 pub fn decompose_balanced(mut value: i64, b: u32) -> Vec<i8> {
-    assert!((1..=7).contains(&b), "b must be in 1..=7 so digits fit in i8");
+    assert!(
+        (1..=7).contains(&b),
+        "b must be in 1..=7 so digits fit in i8"
+    );
     let beta: i64 = 1 << b;
     let half: i64 = beta >> 1;
     if value == 0 {
@@ -104,7 +107,11 @@ pub fn matmul_reference(a: &IntMatrix, b: &IntMatrix) -> IntMatrix {
             data[i * m + j] = i64::try_from(acc).expect("product entry exceeds i64 range");
         }
     }
-    IntMatrix { rows: n, cols: m, data }
+    IntMatrix {
+        rows: n,
+        cols: m,
+        data,
+    }
 }
 
 /// Exact partial product of two slices: `i8` inputs, `i32` accumulator, no rounding.
@@ -124,7 +131,11 @@ fn matmul_slice(a: &I8Matrix, b: &I8Matrix) -> IntMatrix {
             data[i * m + j] = acc as i64;
         }
     }
-    IntMatrix { rows: n, cols: m, data }
+    IntMatrix {
+        rows: n,
+        cols: m,
+        data,
+    }
 }
 
 /// Exact matmul via the Ozaki slice path. Bit-for-bit equal to [`matmul_reference`].
@@ -158,7 +169,11 @@ pub fn matmul_via_slices(a: &IntMatrix, b: &IntMatrix, b_bits: u32) -> IntMatrix
 /// Bits needed by an `i8`×`i8` partial-product accumulator for inner dimension `n`:
 /// `2*b + ceil(log2(n))`. Must be `<= 31` to stay inside `i32`.
 pub fn no_overflow_bits(b: u32, n: u32) -> u32 {
-    let ceil_log2_n = if n <= 1 { 0 } else { 32 - (n - 1).leading_zeros() };
+    let ceil_log2_n = if n <= 1 {
+        0
+    } else {
+        32 - (n - 1).leading_zeros()
+    };
     2 * b + ceil_log2_n
 }
 
@@ -274,12 +289,16 @@ mod tests {
             let a = IntMatrix {
                 rows: n,
                 cols: k,
-                data: (0..n * k).map(|_| rng.in_range(-(1 << 18), 1 << 18)).collect(),
+                data: (0..n * k)
+                    .map(|_| rng.in_range(-(1 << 18), 1 << 18))
+                    .collect(),
             };
             let bb = IntMatrix {
                 rows: k,
                 cols: m,
-                data: (0..k * m).map(|_| rng.in_range(-(1 << 18), 1 << 18)).collect(),
+                data: (0..k * m)
+                    .map(|_| rng.in_range(-(1 << 18), 1 << 18))
+                    .collect(),
             };
             assert_eq!(
                 matmul_via_slices(&a, &bb, b),
@@ -310,8 +329,16 @@ mod tests {
             // On-grid f32 values (integer / 2^frac), bounded so the exact product fits in f64.
             let scale = (1i64 << frac) as f64;
             let sample = |rng: &mut Rng| (rng.in_range(-(1 << 18), 1 << 18) as f64 / scale) as f32;
-            let a = F32Matrix { rows: n, cols: k, data: (0..n * k).map(|_| sample(&mut rng)).collect() };
-            let bb = F32Matrix { rows: k, cols: m, data: (0..k * m).map(|_| sample(&mut rng)).collect() };
+            let a = F32Matrix {
+                rows: n,
+                cols: k,
+                data: (0..n * k).map(|_| sample(&mut rng)).collect(),
+            };
+            let bb = F32Matrix {
+                rows: k,
+                cols: m,
+                data: (0..k * m).map(|_| sample(&mut rng)).collect(),
+            };
 
             let via = matmul_f32(&a, &bb, frac, b);
             let naive = matmul_f32_naive(&a, &bb);
@@ -319,4 +346,81 @@ mod tests {
             assert_eq!(via, naive, "f32 pipeline must match a direct f64 product");
         }
     }
+}
+
+#[test]
+fn test_f64_reconstruction_mixed_magnitude() {
+    let n = 2;
+
+    // Adjusted magnitudes to prevent overflowing the i64 accumulator
+    // while still satisfying the mixed-magnitude requirement.
+    let a_data = vec![
+        1.0, 256.0, // 2^0, 2^8
+        0.0625, 1024.0, // 2^-4, 2^10
+    ];
+    let b_data = vec![2.0, 0.5, 16.0, 64.0];
+
+    let a_mat = F32Matrix {
+        rows: n,
+        cols: n,
+        data: a_data,
+    };
+    let b_mat = F32Matrix {
+        rows: n,
+        cols: n,
+        data: b_data,
+    };
+
+    let expected_f64 = matmul_f32_naive(&a_mat, &b_mat);
+
+    // Lowering frac_bits to 8 so the fixed-point integers don't overflow i64
+    let frac_bits = 8;
+    let b_bits = 7;
+    let protocol_output = matmul_f32(&a_mat, &b_mat, frac_bits, b_bits);
+
+    assert_eq!(
+        expected_f64, protocol_output,
+        "f64 reconstruction failed exactness for mixed-magnitude inputs"
+    );
+}
+
+#[test]
+fn test_f64_reconstruction_rounding_boundary() {
+    /* * EXACTNESS BOUNDARY NOTE:
+     * The f64 target has a 53-bit mantissa. Reconstruction is strictly bit-exact
+     * as long as the maximum accumulated fixed-point value does not exceed 2^53 - 1.
+     * If the dynamic range (scale differences) or matrix dimension (N) causes
+     * the dot product to exceed this bound, the f64 hardware will silently round
+     * the lowest bits, and exactness is lost.
+     */
+
+    let n = 2;
+
+    // We construct a scenario where the exact mathematical answer is 2^53 + 1.
+    let a_data = vec![2.0f32.powi(26), 1.0, 0.0, 0.0];
+    let b_data = vec![2.0f32.powi(27), 0.0, 1.0, 0.0];
+
+    let a_mat = F32Matrix {
+        rows: n,
+        cols: n,
+        data: a_data,
+    };
+    let b_mat = F32Matrix {
+        rows: n,
+        cols: n,
+        data: b_data,
+    };
+
+    let frac_bits = 0;
+    let b_bits = 7;
+    let protocol_output = matmul_f32(&a_mat, &b_mat, frac_bits, b_bits);
+
+    // The exact mathematical sum is (2^26 * 2^27) + (1 * 1) = 2^53 + 1.
+    // Because f64 cannot represent 2^53 + 1, it hardware-rounds down to 2^53.
+    let rounded_f64 = 2.0f64.powi(53);
+
+    assert_eq!(
+            protocol_output[0], rounded_f64,
+            "The output was forced to round to the nearest representable f64 (2^53), proving the boundary."
+        );
 }
